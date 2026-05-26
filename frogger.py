@@ -12,7 +12,7 @@ ROWS   = 14
 GW     = COLS * CELL     # 480
 GH     = ROWS * CELL     # 560
 HEADER = 70
-BTN_H  = 120 if ANDROID else 0
+BTN_H  = 0
 VIRT_W = GW
 VIRT_H = HEADER + GH + BTN_H
 FPS    = 60
@@ -54,16 +54,16 @@ ROW_TYPES = [
 GOAL_COLS = [1, 3, 5, 7, 9]
 
 LANE_CFG = {
-    1:  (100, +1, 'log', 3*CELL, 3),
-    2:  (130, -1, 'log', 4*CELL, 2),
-    3:  ( 80, +1, 'log', 3*CELL, 3),
-    4:  (150, -1, 'log', 2*CELL, 4),
-    5:  (110, +1, 'log', 4*CELL, 2),
-    7:  (120, -1, 'car', CELL+10, 3),
-    8:  (160, +1, 'car', 2*CELL,  2),
-    9:  ( 90, -1, 'car', CELL+10, 3),
-    10: (180, +1, 'car', 2*CELL,  2),
-    11: (140, -1, 'car', CELL+10, 4),
+    1:  ( 55, +1, 'log', 3*CELL, 3),
+    2:  ( 70, -1, 'log', 4*CELL, 2),
+    3:  ( 45, +1, 'log', 3*CELL, 3),
+    4:  ( 80, -1, 'log', 2*CELL, 4),
+    5:  ( 60, +1, 'log', 4*CELL, 2),
+    7:  ( 65, -1, 'car', CELL+10, 3),
+    8:  ( 90, +1, 'car', 2*CELL,  2),
+    9:  ( 55, -1, 'car', CELL+10, 3),
+    10: (100, +1, 'car', 2*CELL,  2),
+    11: ( 75, -1, 'car', CELL+10, 4),
 }
 
 _clr_idx = {}
@@ -352,24 +352,6 @@ def draw_header(surf, game, font, small, high, pause_btn):
                         pause_btn.centery - lbl.get_height()//2))
 
 
-def draw_buttons(surf, font, y):
-    half = BTN_H // 2
-    w3   = VIRT_W // 3
-    pygame.draw.rect(surf, (15, 15, 15), (0, y, VIRT_W, BTN_H))
-    rects = {
-        'up':    pygame.Rect(w3,    y,        w3,   half-2),
-        'left':  pygame.Rect(0,     y+half,   w3,   half-2),
-        'down':  pygame.Rect(w3,    y+half,   w3,   half-2),
-        'right': pygame.Rect(2*w3,  y+half,   w3,   half-2),
-    }
-    symbols = {'up': '▲', 'left': '◄', 'down': '▼', 'right': '►'}
-    for action, r in rects.items():
-        pygame.draw.rect(surf, (55, 55, 55), r, border_radius=8)
-        pygame.draw.rect(surf, (110, 110, 110), r, 2, border_radius=8)
-        lbl = font.render(symbols[action], True, WHITE)
-        surf.blit(lbl, (r.centerx - lbl.get_width()//2,
-                        r.centery - lbl.get_height()//2))
-    return rects
 
 
 def draw_overlay(surf, title, sub, font, small):
@@ -421,46 +403,9 @@ def main():
     game      = Game()
     high      = load_high()
 
-    pause_btn = pygame.Rect(VIRT_W - 55, 18, 48, 28)
-
-    # Pre-compute button rects (used for touch input before first draw)
-    _half = BTN_H // 2
-    _w3   = VIRT_W // 3
-    _by   = HEADER + GH
-    btn_rects = {
-        'up':    pygame.Rect(_w3,   _by,        _w3,  _half-2),
-        'left':  pygame.Rect(0,     _by+_half,  _w3,  _half-2),
-        'down':  pygame.Rect(_w3,   _by+_half,  _w3,  _half-2),
-        'right': pygame.Rect(2*_w3, _by+_half,  _w3,  _half-2),
-    } if ANDROID else {}
-
-    ACTION_MAP = {'up': (0,-1), 'down': (0,+1), 'left': (-1,0), 'right': (+1,0)}
-
-    touch_held = None
-    hold_timer = 0
-    DAS_DELAY  = 200
-    DAS_REPEAT = 120
-
-    def do_move(action):
-        if action in ACTION_MAP:
-            dc, dr = ACTION_MAP[action]
-            game.move(dc, dr)
-
-    def handle_finger(vpos):
-        nonlocal touch_held, hold_timer
-        if game.over:
-            return 'restart'
-        if pause_btn.collidepoint(vpos):
-            game.paused = not game.paused
-            return
-        if game.paused:
-            return
-        for action, r in btn_rects.items():
-            if r.collidepoint(vpos):
-                do_move(action)
-                touch_held = action
-                hold_timer = 0
-                return
+    pause_btn   = pygame.Rect(VIRT_W - 55, 18, 48, 28)
+    swipe_start = None   # (vx, vy) on FINGERDOWN
+    MIN_SWIPE   = 25     # virtual pixels needed to count as a swipe
 
     while True:
         dt = clock.tick(FPS)
@@ -481,20 +426,28 @@ def main():
                     if event.key in (pygame.K_RIGHT, pygame.K_d): game.move(+1,  0)
 
             if ANDROID and event.type == pygame.FINGERDOWN:
-                vpos = to_virt((int(event.x * SW), int(event.y * SH)))
-                result = handle_finger(vpos)
-                if result == 'restart':
-                    game = Game()
+                swipe_start = to_virt((int(event.x * SW), int(event.y * SH)))
 
             if ANDROID and event.type == pygame.FINGERUP:
-                touch_held = None
-                hold_timer = 0
-
-        if ANDROID and touch_held and not game.over and not game.paused:
-            hold_timer += dt
-            if hold_timer >= DAS_DELAY + DAS_REPEAT:
-                do_move(touch_held)
-                hold_timer -= DAS_REPEAT
+                if swipe_start is not None:
+                    ex = int(event.x * SW)
+                    ey = int(event.y * SH)
+                    vx, vy = to_virt((ex, ey))
+                    dx = vx - swipe_start[0]
+                    dy = vy - swipe_start[1]
+                    # Short tap on pause button
+                    if pause_btn.collidepoint(swipe_start) and abs(dx) < MIN_SWIPE and abs(dy) < MIN_SWIPE:
+                        if not game.over:
+                            game.paused = not game.paused
+                    elif game.over:
+                        game = Game()
+                    elif not game.paused:
+                        if max(abs(dx), abs(dy)) >= MIN_SWIPE:
+                            if abs(dx) >= abs(dy):
+                                game.move(1 if dx > 0 else -1, 0)
+                            else:
+                                game.move(0, 1 if dy > 0 else -1)
+                swipe_start = None
 
         game.update(dt)
 
@@ -510,14 +463,11 @@ def main():
         draw_header(virt, game, font, small, high, pause_btn)
         virt.blit(game_surf, (0, HEADER))
 
-        if ANDROID:
-            btn_rects = draw_buttons(virt, font, HEADER + GH)
-
         if game.paused and not game.over:
-            sub = "Tap II to resume" if ANDROID else "Press P to resume"
+            sub = "Swipe to resume" if ANDROID else "Press P to resume"
             draw_overlay(virt, "PAUSED", sub, font, small)
         if game.over:
-            sub = "Tap anywhere to restart" if ANDROID else "Press R to restart"
+            sub = "Tap to restart" if ANDROID else "Press R to restart"
             draw_overlay(virt, "GAME OVER", sub, font, small)
 
         if ANDROID:
