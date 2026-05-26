@@ -1,0 +1,13 @@
+# Build artifacts
+.buildozer/
+bin/
+dist/
+
+# Logs
+*.log
+*.txt
+
+# Large binary/media files
+*.apk
+*.exe
+*.ebb
