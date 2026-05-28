@@ -12,7 +12,7 @@ ROWS   = 14
 GW     = COLS * CELL     # 480
 GH     = ROWS * CELL     # 560
 HEADER = 70
-BTN_H  = 0
+BTN_H  = 120 if ANDROID else 0
 VIRT_W = GW
 VIRT_H = HEADER + GH + BTN_H
 FPS    = 60
@@ -366,6 +366,25 @@ def draw_overlay(surf, title, sub, font, small):
               (VIRT_W//2 - sw//2, HEADER + GH//2 + 10))
 
 
+# ── D-pad (Android only) ─────────────────────────────────────────────────────
+
+def draw_dpad(surf, rects):
+    for name, rect in rects.items():
+        pygame.draw.rect(surf, PINK, rect, border_radius=10)
+        pygame.draw.rect(surf, WHITE, rect, 2, border_radius=10)
+        cx, cy = rect.centerx, rect.centery
+        s = 11
+        if name == 'up':
+            pts = [(cx, cy-s), (cx-s, cy+s), (cx+s, cy+s)]
+        elif name == 'down':
+            pts = [(cx, cy+s), (cx-s, cy-s), (cx+s, cy-s)]
+        elif name == 'left':
+            pts = [(cx-s, cy), (cx+s, cy-s), (cx+s, cy+s)]
+        else:
+            pts = [(cx+s, cy), (cx-s, cy-s), (cx-s, cy+s)]
+        pygame.draw.polygon(surf, WHITE, pts)
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
@@ -403,9 +422,17 @@ def main():
     game      = Game()
     high      = load_high()
 
-    pause_btn   = pygame.Rect(VIRT_W - 55, 18, 48, 28)
-    swipe_start = None   # (vx, vy) on FINGERDOWN
-    MIN_SWIPE   = 25     # virtual pixels needed to count as a swipe
+    pause_btn = pygame.Rect(VIRT_W - 55, 18, 48, 28)
+
+    # D-pad button rects (only used on Android, positioned below game area)
+    _by = HEADER + GH   # y=630 — top of button strip
+    dpad = {
+        'up':    pygame.Rect(VIRT_W//2 - 45, _by +  5, 90, 40),
+        'down':  pygame.Rect(VIRT_W//2 - 45, _by + 75, 90, 40),
+        'left':  pygame.Rect(VIRT_W//2 - 145, _by + 40, 90, 40),
+        'right': pygame.Rect(VIRT_W//2 + 55,  _by + 40, 90, 40),
+    }
+    DPAD_MOVE = {'up': (0,-1), 'down': (0,+1), 'left': (-1,0), 'right': (+1,0)}
 
     while True:
         dt = clock.tick(FPS)
@@ -426,28 +453,18 @@ def main():
                     if event.key in (pygame.K_RIGHT, pygame.K_d): game.move(+1,  0)
 
             if ANDROID and event.type == pygame.FINGERDOWN:
-                swipe_start = to_virt((int(event.x * SW), int(event.y * SH)))
-
-            if ANDROID and event.type == pygame.FINGERUP:
-                if swipe_start is not None:
-                    ex = int(event.x * SW)
-                    ey = int(event.y * SH)
-                    vx, vy = to_virt((ex, ey))
-                    dx = vx - swipe_start[0]
-                    dy = vy - swipe_start[1]
-                    # Short tap on pause button
-                    if pause_btn.collidepoint(swipe_start) and abs(dx) < MIN_SWIPE and abs(dy) < MIN_SWIPE:
-                        if not game.over:
-                            game.paused = not game.paused
-                    elif game.over:
-                        game = Game()
-                    elif not game.paused:
-                        if max(abs(dx), abs(dy)) >= MIN_SWIPE:
-                            if abs(dx) >= abs(dy):
-                                game.move(1 if dx > 0 else -1, 0)
-                            else:
-                                game.move(0, 1 if dy > 0 else -1)
-                swipe_start = None
+                vpos = to_virt((int(event.x * SW), int(event.y * SH)))
+                if game.over:
+                    game = Game()
+                elif pause_btn.collidepoint(vpos):
+                    if not game.over:
+                        game.paused = not game.paused
+                elif not game.paused:
+                    for name, rect in dpad.items():
+                        if rect.collidepoint(vpos):
+                            dc, dr = DPAD_MOVE[name]
+                            game.move(dc, dr)
+                            break
 
         game.update(dt)
 
@@ -463,8 +480,11 @@ def main():
         draw_header(virt, game, font, small, high, pause_btn)
         virt.blit(game_surf, (0, HEADER))
 
+        if ANDROID:
+            draw_dpad(virt, dpad)
+
         if game.paused and not game.over:
-            sub = "Swipe to resume" if ANDROID else "Press P to resume"
+            sub = "Tap II to resume" if ANDROID else "Press P to resume"
             draw_overlay(virt, "PAUSED", sub, font, small)
         if game.over:
             sub = "Tap to restart" if ANDROID else "Press R to restart"
